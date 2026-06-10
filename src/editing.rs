@@ -83,17 +83,16 @@ pub fn get_tone_mark_placement(raw_syllable: &str, accent_style: &AccentStyle) -
 ///
 /// Note: It's character index, not byte index.
 pub fn replace_nth_char(input: &mut String, replace_index: usize, replace_ch: char) {
-    *input = input
-        .chars()
-        .enumerate()
-        .map(|(index, ch)| {
-            if index == replace_index {
-                replace_ch
-            } else {
-                ch
-            }
-        })
-        .collect();
+    // Edit the target char in place instead of rebuilding the whole string.
+    // `replace_range` reuses the existing allocation when the byte widths match
+    // (and even otherwise typically reuses spare capacity).
+    if let Some((start, ch)) = input.char_indices().nth(replace_index) {
+        let mut buf = [0u8; 4];
+        input.replace_range(
+            start..start + ch.len_utf8(),
+            replace_ch.encode_utf8(&mut buf),
+        );
+    }
 }
 
 /// Add tone mark to input character.

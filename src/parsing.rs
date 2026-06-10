@@ -20,7 +20,11 @@ pub struct SyllableComponents<'a> {
 }
 
 fn initial_consonant(input: &str) -> IResult<&str, &str> {
-    if input.to_lowercase().starts_with("gi") && !input.chars().nth(2).is_some_and(is_vowel) {
+    // ASCII case-insensitive "gi" prefix check without allocating a lowercased copy.
+    let mut chars = input.chars();
+    let starts_with_gi =
+        matches!(chars.next(), Some('g' | 'G')) && matches!(chars.next(), Some('i' | 'I'));
+    if starts_with_gi && !input.chars().nth(2).is_some_and(is_vowel) {
         return tag_no_case("g").parse(input);
     }
     alt((tag_no_case("gi"), tag_no_case("qu"), take_till(is_vowel))).parse(input)

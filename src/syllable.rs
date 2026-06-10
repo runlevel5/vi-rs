@@ -124,9 +124,15 @@ impl Syllable {
             self.initial_consonant, self.vowel, self.final_consonant, ch
         );
         let (_, syllable) = parse_syllable(&clean_syllable).unwrap();
-        self.initial_consonant = syllable.initial_consonant.chars().map(clean_char).collect();
-        self.vowel = syllable.vowel.chars().map(clean_char).collect();
-        self.final_consonant = syllable.final_consonant.to_string();
+        // Reuse the existing field allocations instead of replacing them with
+        // freshly-collected Strings on every keystroke.
+        self.initial_consonant.clear();
+        self.initial_consonant
+            .extend(syllable.initial_consonant.chars().map(clean_char));
+        self.vowel.clear();
+        self.vowel.extend(syllable.vowel.chars().map(clean_char));
+        self.final_consonant.clear();
+        self.final_consonant.push_str(syllable.final_consonant);
 
         self.recalculate_modifications();
     }
@@ -160,12 +166,39 @@ impl Syllable {
     /// Set a new value for the current syllable. This will parse the value into consonants, vowel, tonemark & modifications.
     pub fn set(&mut self, raw: String) {
         let (_, syllable) = parse_syllable(&raw).unwrap();
-        self.initial_consonant = syllable.initial_consonant.chars().map(clean_char).collect();
-        self.vowel = syllable.vowel.chars().map(clean_char).collect();
-        self.final_consonant = syllable.final_consonant.to_string();
+        self.initial_consonant.clear();
+        self.initial_consonant
+            .extend(syllable.initial_consonant.chars().map(clean_char));
+        self.vowel.clear();
+        self.vowel.extend(syllable.vowel.chars().map(clean_char));
+        self.final_consonant.clear();
+        self.final_consonant.push_str(syllable.final_consonant);
 
         self.letter_modifications = extract_letter_modifications(&raw).into();
         self.tone_mark = extract_tone(&raw);
+    }
+
+    /// Render the syllable's current state into an existing buffer, reusing its
+    /// allocation. This is the allocation-free core shared by [`Display`] and
+    /// callers that already own an output buffer.
+    pub fn render_into(&self, out: &mut String) {
+        out.clear();
+        out.push_str(&self.initial_consonant);
+        out.push_str(&self.vowel);
+        out.push_str(&self.final_consonant);
+
+        for (position, modification) in &self.letter_modifications {
+            let ch = out.chars().nth(*position).unwrap();
+            let replace_char = add_modification_char(ch, modification);
+            replace_nth_char(out, *position, replace_char);
+        }
+
+        if let Some(tone_mark) = &self.tone_mark {
+            let tone_mark_position = get_tone_mark_placement(out, &self.accent_style);
+            let ch = out.chars().nth(tone_mark_position).unwrap();
+            let replace_char = add_tone_char(ch, tone_mark);
+            replace_nth_char(out, tone_mark_position, replace_char);
+        }
     }
 
     /// Replace the last character in the string to some other character.
@@ -186,25 +219,8 @@ impl Syllable {
 
 impl Display for Syllable {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let mut result = format!(
-            "{}{}{}",
-            self.initial_consonant, self.vowel, self.final_consonant
-        );
-
-        for (position, modification) in &self.letter_modifications {
-            let ch = result.chars().nth(*position).unwrap();
-            let replace_char = add_modification_char(ch, modification);
-
-            replace_nth_char(&mut result, *position, replace_char);
-        }
-
-        if let Some(tone_mark) = &self.tone_mark {
-            let tone_mark_position = get_tone_mark_placement(&result, &self.accent_style);
-            let ch = result.chars().nth(tone_mark_position).unwrap();
-            let replace_char = add_tone_char(ch, tone_mark);
-            replace_nth_char(&mut result, tone_mark_position, replace_char);
-        }
-
+        let mut result = String::new();
+        self.render_into(&mut result);
         write!(f, "{result}")
     }
 }

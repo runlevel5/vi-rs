@@ -604,8 +604,9 @@ impl<'def> IncrementalBuffer<'def> {
     /// This is called internally after each transformation to maintain
     /// the cached output for efficient access via `view()`.
     fn update_output(&mut self) {
-        self.output.clear();
-        self.output.push_str(&self.syllable.to_string());
+        // Render directly into the cached buffer, reusing its allocation instead
+        // of building an intermediate String via `to_string()`.
+        self.syllable.render_into(&mut self.output);
     }
 }
 
